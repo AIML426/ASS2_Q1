@@ -234,14 +234,14 @@ def main():
     dim = [20, 50]   # Dimension of the problem
     seed_value = generate_seed(runs, increment=10)
 
-    for run in range(runs):
-        # Loop through the dimension, 20 and 50
-        for dim_ in dim:
-            # Loop through the objective function
-            print(f"Run: {run+1} Dimension: {dim_}")
+    for obj in range(objective):
+        print(f"Run: {run+1} Dimension: {dim_} Objective: {obj+1}")
 
-            for obj in range(objective):
-                print(f"Run: {run+1} Dimension: {dim_} Objective: {obj+1}")
+        for run in range(runs):
+            # Loop through the dimension, 20 and 50
+            for dim_ in dim:
+                print(f"Run: {run+1} Dimension: {dim_}")
+ 
                 # EP optimization process
                 #EP_parameters = [generations, population_size]
                 #EP_process(bound, EP_parameters, seed_value[run])
@@ -251,7 +251,9 @@ def main():
                 λ = 20  # Offspring
                 ES_parameters = [generations, dim_, μ, λ]
                 ES_process(bound, ES_parameters, seed_value[run], obj)
-        
+            
+            # Save the result into list or dataframe
+            
 
 
 
