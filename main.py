@@ -15,9 +15,9 @@ def fitness_f2(individuals):
         prod *= np.cos(individuals[i]/np.sqrt(i+1))
     return sum - prod + 1
 
-def objective_function(individuals):
+def objective_function(individuals, objective_no=1):
     #return [fitness_f1(individuals) , fitness_f2(individuals)]
-    return fitness_f1(individuals)
+    return fitness_f1(individuals) if objective_no == 1 else fitness_f2(individuals)
 
 def generate_seed(runs, increment=50):
     base_seed = random.randint(5, 10000)  # Generate a random base seed
@@ -162,7 +162,7 @@ def EP_process(generations, bound, parameters):
             #best_solution = np.min(fitness)
             #best_variances = np.min(variancevector)
 
-def ES_process(bound, parameters, seed_value):
+def ES_process(bound, parameters, seed_value, objective_no):
     # Extract parameters
     generations = parameters[0]
     dim = parameters[1]
@@ -179,7 +179,7 @@ def ES_process(bound, parameters, seed_value):
 
     for generation in range(generations):
         # evaluate the fitness of the population
-        fitness = [objective_function(particle) for particle in particles]
+        fitness = [objective_function(particle,objective_no) for particle in particles]
         
         offspring_population = []
         pffspring_variance = []
@@ -214,7 +214,7 @@ def ES_process(bound, parameters, seed_value):
             offspring_population.append(offspring)
         
         # evaluate the fitness of the offspring
-        offspring_fitness = [objective_function(inidividual) for inidividual in offspring_population]
+        offspring_fitness = [objective_function(inidividual, objective_no) for inidividual in offspring_population]
         # select the best individuals from the population and the offspring population
         selected_individuals = enviromental_selection(particles, offspring_population, offspring_fitness, pffspring_variance)
 
@@ -225,7 +225,8 @@ def ES_process(bound, parameters, seed_value):
 def main():
     # General Parameters 
     population_size = 50   
-    generations = 100  
+    generations = 100 
+    objective = 2   # Number of Objective function to optimize
 
     # Solution Boundary 
     bound = [-30, 30]   # Lower bound and Upper bound of the search space
@@ -236,16 +237,20 @@ def main():
     for run in range(runs):
         # Loop through the dimension, 20 and 50
         for dim_ in dim:
+            # Loop through the objective function
+            print(f"Run: {run+1} Dimension: {dim_}")
 
-            # EP optimization process
-            #EP_parameters = [generations, population_size]
-            #EP_process(bound, EP_parameters, seed_value[run])
+            for obj in range(objective):
+                print(f"Run: {run+1} Dimension: {dim_} Objective: {obj+1}")
+                # EP optimization process
+                #EP_parameters = [generations, population_size]
+                #EP_process(bound, EP_parameters, seed_value[run])
 
-            # ES optimization process
-            μ = 10  # Parents
-            λ = 20  # Offspring
-            ES_parameters = [generations, dim_, μ, λ]
-            ES_process(bound, ES_parameters, seed_value[run])
+                # ES optimization process
+                μ = 10  # Parents
+                λ = 20  # Offspring
+                ES_parameters = [generations, dim_, μ, λ]
+                ES_process(bound, ES_parameters, seed_value[run], obj)
         
 
 
