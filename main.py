@@ -199,11 +199,11 @@ def ES_process(bound, parameters, seed_value, objective_no):
             child_variance = [p1 + p2 / 2 for p1,p2 in zip(parents_variance[0], parents_variance[1])]
 
             # generate scaling factor p0 and p1 
-            p0 = np.random.normal(0, T) # single value drawn from a normal distribution
-            p1 = np.random.normal(0, T_, dim) # vector drawn from a normal distribution
+            p0 = np.random.normal(0, 1) # single value drawn from a normal distribution
+            p1 = np.random.normal(0, 1, dim) # vector drawn from a normal distribution
 
             # mutate variance of the child
-            child_variance_mut = child_variance * np.exp(p0 + p1)
+            child_variance_mut = child_variance * np.exp(T_ * p0 + T * p1)
             # calculate sigma diag matrix
             sigma = np.diag(child_variance_mut)
             # Extract diagonal elements from sigma
