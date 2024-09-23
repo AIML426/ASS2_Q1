@@ -16,7 +16,14 @@ def fitness_f2(individuals):
     return sum - prod + 1
 
 def objective_function(individuals):
-    return [fitness_f1(individuals) , fitness_f2(individuals)]
+    #return [fitness_f1(individuals) , fitness_f2(individuals)]
+    return fitness_f1(individuals)
+
+def generate_seed(runs, increment=50):
+    base_seed = random.randint(5, 10000)  # Generate a random base seed
+    seed_values = [base_seed + i * increment for i in range(runs)]
+    return seed_values
+
 
 def recombination(parents):
     """
@@ -66,7 +73,7 @@ def tournament_selection(population, fitness, tournament_size):
     selected_indices = np.random.choice(len(population), tournament_size, replace=False)
     selected_fitness = [fitness[i] for i in selected_indices]
     best_index = selected_indices[np.argmin(selected_fitness)]
-    return population[best_index]
+    return population[best_index], best_index
 
 def enviromental_selection(population, offspring, offspring_fitness, variances):
     """
@@ -155,7 +162,7 @@ def EP_process(generations, bound, parameters):
             #best_solution = np.min(fitness)
             #best_variances = np.min(variancevector)
 
-def ES_process(generations, bound, parameters, seed_value):
+def ES_process(bound, parameters, seed_value):
     # Extract parameters
     generations = parameters[0]
     dim = parameters[1]
@@ -165,28 +172,31 @@ def ES_process(generations, bound, parameters, seed_value):
 
     # Create the initial particle and variance of the population
     particles = np.random.uniform(low=bound[0], high=bound[1], size=(μ, dim))
-    variances = np.var(particles, axis=0)
+    variances = [[4.0] * dim for _ in range(μ)]
 
     T = (np.sqrt(2 * np.sqrt(dim))) ** -1
     T_ = (np.sqrt(2 * dim)) ** -1
 
-    for generation in generations:
+    for generation in range(generations):
         # evaluate the fitness of the population
         fitness = [objective_function(particle) for particle in particles]
-        offspring = []
+        
+        offspring_population = []
+        pffspring_variance = []
         # iterate over offspring
         for i in range(λ):
             # randomly select two parents, obtain variance of selected parents
             # create a function to apply Tournament selection to select parents
-            parent1 = tournament_selection(particles, fitness, 2)
-            parent2 = tournament_selection(particles, fitness, 2)
+            parent1, parent1_idx = tournament_selection(particles, fitness, 2)
+            parent2, parent2_idx = tournament_selection(particles, fitness, 2)
             parents = [parent1, parent2]
 
-            parents_variance = [variances[parents[0]], variances[parents[1]]]
+            parents_variance = [variances[parent1_idx], variances[parent2_idx]]
             
             # recmbine the parents and its variance by applying the recombination function
             child = recombination(parents)
-            child_variance = (parents_variance[0] + parents_variance[1]) / 2
+            #child_variance = recombination(parents_variance)
+            child_variance = [p1 + p2 / 2 for p1,p2 in zip(parents_variance[0], parents_variance[1])]
 
             # generate scaling factor p0 and p1 
             p0 = np.random.normal(0, T) # single value drawn from a normal distribution
@@ -196,23 +206,22 @@ def ES_process(generations, bound, parameters, seed_value):
             child_variance_mut = child_variance * np.exp(p0 + p1)
             # calculate sigma diag matrix
             sigma = np.diag(child_variance_mut)
+            # Extract diagonal elements from sigma
+            sigma_diag = np.diag(sigma)     
             # afterward, mutate child
-            offspring = child + np.random.normal(0, sigma, dim)
-            offspring.append(offspring)
+            offspring = child + np.random.normal(0, sigma_diag, size=dim)
+            pffspring_variance.append(child_variance_mut)
+            offspring_population.append(offspring)
         
         # evaluate the fitness of the offspring
-        offspring_fitness = [objective_function(offspring) for offspring in offspring]
+        offspring_fitness = [objective_function(inidividual) for inidividual in offspring_population]
         # select the best individuals from the population and the offspring population
-        selected_individuals = enviromental_selection(particles, offspring, offspring_fitness, variances)
+        selected_individuals = enviromental_selection(particles, offspring_population, offspring_fitness, pffspring_variance)
 
         # update the population and variance with the selected individuals
         particles = selected_individuals[0]
         variances = selected_individuals[1]
             
-
-
-
-
 def main():
     # General Parameters 
     population_size = 50   
@@ -222,9 +231,9 @@ def main():
     bound = [-30, 30]   # Lower bound and Upper bound of the search space
     runs = 30   
     dim = [20, 50]   # Dimension of the problem
-    seed_value = [random.randint(0, 10000) for _ in range(runs)]
+    seed_value = generate_seed(runs, increment=10)
 
-    for run in runs:
+    for run in range(runs):
         # Loop through the dimension, 20 and 50
         for dim_ in dim:
 
@@ -234,7 +243,7 @@ def main():
 
             # ES optimization process
             μ = 10  # Parents
-            λ = 50  # Offspring
+            λ = 20  # Offspring
             ES_parameters = [generations, dim_, μ, λ]
             ES_process(bound, ES_parameters, seed_value[run])
         
