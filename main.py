@@ -24,6 +24,25 @@ def generate_seed(runs, increment=50):
     seed_values = [base_seed + i * increment for i in range(runs)]
     return seed_values
 
+def mutation(individual, beta, gamma, current_generation, max_generations, stagnation_counter):
+    """Apply Cauchy mutation with beta and gamma scaling to an individual."""
+    # Adaptive mutation: decay factor to reduce step size over time
+    decay_factor = 1 - (current_generation / max_generations)
+    
+    # If the algorithm is stuck, increase the mutation step size to escape local minima
+    if stagnation_counter > 5:
+        gamma *= 1.5  # Boost exploration if stuck
+
+    # Cauchy mutation for global exploration, combined with Gaussian mutation for local refinement
+    mutation_step_cauchy = np.random.standard_cauchy() * gamma * decay_factor
+    mutation_step_gaussian = np.random.normal(0, gamma * 0.5, size=individual.shape) * decay_factor
+    
+    # Combine the mutation steps (Cauchy for exploration, Gaussian for exploitation)
+    mutation_step = (beta * mutation_step_cauchy + (1 - beta) * mutation_step_gaussian)
+    
+    # Apply the mutation and return the new individual
+    mutated_individual = individual + mutation_step
+    return mutated_individual
 
 def recombination(parents):
     """
@@ -105,63 +124,133 @@ def enviromental_selection(population, offspring, offspring_fitness, variances):
     
     return selected_population, selected_variances
 
-def EP_process(generations, bound, parameters):
-    # Extract parameters
-    population_size = parameters[0]
-    generations = parameters[1]
-    dim = parameters[2]
+def adjust_gamma(gamma, gamma_adjust_factor,current_best, best_fitness, threshold, current_generation, generations):
+    decay_factor = 1 - (current_generation / generations)
+    # Adjust the mutation rate based on the best 
+    if abs(current_best - best_fitness) < threshold:
+        # If improvement is smaller than threshold, increase gamma (exploration)
+        gamma *= (gamma_adjust_factor * decay_factor) 
+    else:
+        # If improvement is larger than threshold, reduce gamma (exploitation)
+        gamma /= (gamma_adjust_factor * decay_factor) 
+
+    return gamma
+
+def create_table(fitness_obj1, fitness_obj2):
+    # First column
+    #runs_column = []
+    #for i in range(runs):
+    #    runs_column.append(f'Run {i+1}')
+    
+    # Mean and standard deviation
+    mean_obj1 = np.mean(fitness_obj1)
+    std_obj1 = np.std(fitness_obj1)
+    mean_obj2 = np.mean(fitness_obj2)
+    std_obj2 = np.std(fitness_obj2)
+
+    # Create a dictionary with the two lists as values
+    #data = {'Fun': '', 'Fitness Obj 1': '', 'Fitness Obj 2': ''}
+    data = {'': ['Mean'], 'Fitness Obj 1': [mean_obj1], 'Fitness Obj 2': [mean_obj2]}
+
+    # Create a pandas DataFrame from the dictionary
+    data_table = pd.DataFrame(data)
+
+    # Create a new DataFrame with the mean and concatenate it with (data_table)
+    #mean_row = pd.DataFrame({'': ['Mean'], 'Fitness Obj 1': [mean_obj1], 'Fitness Obj 2': [mean_obj2]})
+    #data_table = pd.concat([data_table, mean_row], ignore_index=True)
+
+    # Create a new DataFrame with the stander deviation and concatenate it with (data_table)
+    std_row = pd.DataFrame({'': ['STD'], 'Fitness Obj 1': [std_obj1], 'Fitness Obj 2': [std_obj2]})
+    data_table = pd.concat([data_table, std_row], ignore_index=True)
+    return data_table
+
+def EP_process(bound, parameters, seed_value, objective_no):
+    # Extract parameters  [generations, dim_, population_sie, offspring_size]
+    generations = parameters[0]
+    dim = parameters[1]
+    population_size = parameters[2]
+    offspring_size = parameters[3]
+    turnament_q = 2
+    beta = 0.5
+    gamma = 4.0
+    gamma_adjust_factor = 0.5 # Factor to adjust gamma based on improvement
+    threshold = 0.01 # Threshold for improvement gamma adjustment
+    max_stagnation = 5  # Maximum number of generations to tolerate stagnation
+    stagnation_counter = 0  # Counter to track stagnation
+    elistism_no = 2
+    random.seed(seed_value)
 
     # Create the initial particle and variance of the population
     solution_vector = np.random.uniform(low=bound[0], high=bound[1], size=(population_size, dim))
-    variancevector = np.var(solution_vector, axis=0)
+    #variancevector = np.var(solution_vector, axis=0)
 
-    for generation in generations:
-            print(f'Generation: {generation} of {generations} ...')
+    best_solution = None
+    best_fitness = None
+
+    print('EP Process')
+    for generation in range(generations):
+            print(f'\rEP: Generation: {generation} of {generations} ...', end='.', flush=True)
             
+            if generations % 50 < generation:
+                gamma = 1.0
+
             # Evaluate the fitness of each dimention in the population
-            """
-                FITNESS FUNCTION
-                    - Fitness function is used to evaluate the fitness of the population.
-                    - Store the fitness value of the offsprings into a new variable
-            """
-            #fitness = [objective_function(solution) for solution in solution_vector]
-            
-            
-            """
-                MUTATION 
-                    - Mutation Type (crunchy function) 
-                    - Mutation function is used to create new offsprings from the current population
-                    - Store the new offsprings into a new variable
-            """
-            #offspring_vector = [mutation(solution, variancevector) for solution in solution_vector]
-            """
-                FITNESS FUNCTION
-                    - Fitness function is used to evaluate the fitness of the offsprings
-                    - Store the fitness value of the offsprings into a new variable
-            """
-            #pffspring_fitness = [objective_function(offspring) for offspring in offspring_vector]
-            """
-                COMBINANTION OF POPULATION AND OFFSPRING
-                    - Combine the population and the offsprings
-            """
-            """
-                SELECTION FUNCTION
-                    - Selection function is used to select the best individuals from the population and the offspring population
-                    - Store the selected individuals into a new variable
-                    - Store variance of the selected individuals into a new variable.
-            """
-            #selected_individuals = selection(fitness, pffspring_fitness, solution_vector, offspring_vector, variancevector)
-            """
-                UPDATE POPULATION
-                    - Update the population with the selected individuals
-            """
-            # Update the population and variance of the population
-            #solution_vector = selected_individuals
+            fitness = [objective_function(solution, objective_no) for solution in solution_vector]
+            current_best = np.min(fitness)
+        
+            # If the best solution hasn't improved significantly, increase stagnation counter
+            if best_fitness is not None and current_best >= best_fitness:
+                if abs(current_best - best_fitness) < threshold:
+                    stagnation_counter += 1
+                else:
+                    stagnation_counter = 0  # Reset stagnation if improvement occurs
 
+            # Apply elistism to select the two best individuals
+            best_indices = np.argsort(fitness)[:elistism_no]
+            elistism_best_fitness = [fitness[i] for i in best_indices]
+            elistism_best_solution = [solution_vector[i] for i in best_indices]
+            
+            # Create new individuals through mutation
+            offspring_population = []
+            for i in range(offspring_size):
+                # PARENT SELECTION: use Turnament selection to select one parent
+                parent1, parent1_idx = tournament_selection(solution_vector, fitness, turnament_q)
+
+                # MUTATION: Apply Mutation to create new offspring, Mutation Type (crunchy function) 
+                offspring = mutation(parent1, beta, gamma, generation, generations, stagnation_counter)
+
+                # Append the offspring to the offspring population
+                offspring_population.append(offspring)
+            
+            # FITNESS OFFSPRING: Evaluate the fitness of the offspring
+            offspring_fitness = [objective_function(offspring, objective_no) for offspring in offspring_population]
+
+            # COMBINE: Combine the population and the offsprings
+            solution_vector = list(solution_vector)
+            offspring_population = list(offspring_population)
+            combined_population = solution_vector + offspring_population
+            combined_fitness = fitness + offspring_fitness
+
+            # Select the best individuals from the population and the offspring population
+            # get the best individuals from the combined population
+            sorted_indices = np.argsort(combined_fitness)
+            combined_population = [combined_population[i] for i in sorted_indices]
+            combined_fitness = [combined_fitness[i] for i in sorted_indices]
+            selected_individuals = combined_population[:population_size - elistism_no] + elistism_best_solution
+
+            # Update the population and variance with the selected individuals
+            solution_vector = selected_individuals
+            
             # Track the best solution: store the best solution and variance of the best solution
-            #best_solution = np.min(fitness)
-            #best_variances = np.min(variancevector)
-
+            fitness = [objective_function(solution, objective_no) for solution in solution_vector]
+            current_best = np.min(fitness)
+            best_index = np.argmin(fitness)
+            if not best_fitness or current_best < best_fitness:
+                best_fitness = current_best
+                best_solution = solution_vector[best_index]
+    
+    return best_solution, best_fitness
+            
 def ES_process(bound, parameters, seed_value, objective_no):
     # Extract parameters
     generations = parameters[0]
@@ -176,13 +265,26 @@ def ES_process(bound, parameters, seed_value, objective_no):
 
     T = (np.sqrt(2 * np.sqrt(dim))) ** -1
     T_ = (np.sqrt(2 * dim)) ** -1
-
+    
+    gamma_adjust_factor= 1.5
+    threshold= 0.01
+    stagnation_limit= 2
+    stagnation_counter = 0  # Track stagnation in generations
+    best_solution = None 
+    best_fitness = None
+    
     for generation in range(generations):
+        print(f'\rES: Generation: {generation} of {generations} ...', end='.', flush=True)
+
+        # Scale the mutation strength to gradually reduce it over generations
+        mutation_scale = (1 - generation / generations)  # Large mutation early, smaller later
+
         # evaluate the fitness of the population
         fitness = [objective_function(particle,objective_no) for particle in particles]
         
         offspring_population = []
         pffspring_variance = []
+        
         # iterate over offspring
         for i in range(λ):
             # randomly select two parents, obtain variance of selected parents
@@ -196,14 +298,15 @@ def ES_process(bound, parameters, seed_value, objective_no):
             # recmbine the parents and its variance by applying the recombination function
             child = recombination(parents)
             #child_variance = recombination(parents_variance)
-            child_variance = [p1 + p2 / 2 for p1,p2 in zip(parents_variance[0], parents_variance[1])]
+            child_variance = [(p1 + p2) / 2 for p1,p2 in zip(parents_variance[0], parents_variance[1])]
 
             # generate scaling factor p0 and p1 
             p0 = np.random.normal(0, 1) # single value drawn from a normal distribution
             p1 = np.random.normal(0, 1, dim) # vector drawn from a normal distribution
 
             # mutate variance of the child
-            child_variance_mut = child_variance * np.exp(T_ * p0 + T * p1)
+            child_variance_mut = child_variance * np.exp(T_ * p0 * mutation_scale + T * p1 * mutation_scale)
+
             # calculate sigma diag matrix
             sigma = np.diag(child_variance_mut)
             # Extract diagonal elements from sigma
@@ -221,42 +324,93 @@ def ES_process(bound, parameters, seed_value, objective_no):
         # update the population and variance with the selected individuals
         particles = selected_individuals[0]
         variances = selected_individuals[1]
+
+        # Track the best solution: store the best solution and variance of the best solution
+        fitness = [objective_function(particle, objective_no) for particle in particles]
+        current_best = np.min(fitness)
+        best_index = np.argmin(fitness)
+
+        if best_fitness is None or current_best < best_fitness - threshold:  # Significant improvement
+            best_fitness = current_best
+            best_solution = particles[best_index]
+            stagnation_counter = 0  # Reset stagnation counter
+            # Decrease gamma (mutation rate) to refine the search in promising areas
+            T *= 1 / gamma_adjust_factor
+            T_ *= 1 / gamma_adjust_factor
+        else:
+            stagnation_counter += 1
+            if stagnation_counter >= stagnation_limit:  # Stuck in stagnation
+                # Increase gamma (mutation rate) to promote exploration
+                T *= gamma_adjust_factor * (1 + stagnation_counter / generations)  # More aggressive increase
+                T_ *= gamma_adjust_factor * (1 + stagnation_counter / generations)
+                stagnation_counter = 0  # Reset counter after adjustment
+    
+    return best_solution, best_fitness
             
 def main():
-    # General Parameters 
-    population_size = 50   
+    # General Parameters    
     generations = 100 
     objective = 2   # Number of Objective function to optimize
 
     # Solution Boundary 
     bound = [-30, 30]   # Lower bound and Upper bound of the search space
-    runs = 30   
+    runs = 5   
     dim = [20, 50]   # Dimension of the problem
     seed_value = generate_seed(runs, increment=10)
 
+    f1_d20_best_fitness = np.zeros((runs, 2))
+    f1_d50_best_fitness = np.zeros((runs, 2))
+    f2_d20_best_fitness = np.zeros((runs, 2))
+    f2_d50_best_fitness = np.zeros((runs, 2))
+
     for obj in range(objective):
-        print(f"Run: {run+1} Dimension: {dim_} Objective: {obj+1}")
 
         for run in range(runs):
             # Loop through the dimension, 20 and 50
             for dim_ in dim:
-                print(f"Run: {run+1} Dimension: {dim_}")
+                print(f"Objective: {obj+1}, Run: {run+1} Dimension: {dim_}\n")
  
                 # EP optimization process
-                #EP_parameters = [generations, population_size]
-                #EP_process(bound, EP_parameters, seed_value[run])
-
+                population_sie = 20
+                offspring_size = 50
+                EP_parameters = [generations, dim_, population_sie, offspring_size]
+                EP_best_solution, EP_best_fitness =  EP_process(bound, EP_parameters, seed_value[run], obj+1)
+                
                 # ES optimization process
-                μ = 10  # Parents
-                λ = 20  # Offspring
+                μ = 20  # Parents
+                λ = 40  # Offspring
                 ES_parameters = [generations, dim_, μ, λ]
-                ES_process(bound, ES_parameters, seed_value[run], obj)
-            
-            # Save the result into list or dataframe
-            
+                ES_best_solution, ES_best_fitness = ES_process(bound, ES_parameters, seed_value[run], obj+1)
+ 
+                if obj == 0:
+                    if(dim_ == 20):
+                        f1_d20_best_fitness[run] = [EP_best_fitness, ES_best_fitness]
+                    else:
+                        f1_d50_best_fitness[run] = [EP_best_fitness, ES_best_fitness]
+                else:
+                    if(dim_ == 20):
+                        f2_d20_best_fitness[run] = [EP_best_fitness, ES_best_fitness]
+                    else:
+                        f2_d50_best_fitness[run] = [EP_best_fitness, ES_best_fitness]
 
+    # Save the result into list or dataframe, and Create a table with the results
+    EP_d20_table = create_table([item[0] for item in f1_d20_best_fitness], [item[0] for item in f2_d20_best_fitness])
+    EP_d50_table = create_table([item[0] for item in f1_d50_best_fitness], [item[0] for item in f2_d50_best_fitness])
+    ES_d20_table = create_table([item[1] for item in f1_d20_best_fitness], [item[1] for item in f2_d20_best_fitness])
+    ES_d50_table = create_table([item[1] for item in f1_d50_best_fitness], [item[1] for item in f2_d50_best_fitness])
 
-
+    print('------------------------------------')
+    print("EP 20")
+    print(EP_d20_table)
+    print('------------------------------------')
+    print("EP 50")
+    print(EP_d50_table)
+    print('------------------------------------')
+    print("ES 20")
+    print(ES_d20_table)
+    print('------------------------------------')
+    print("ES 50")
+    print(ES_d50_table)
 
 
 if __name__ == "__main__":
